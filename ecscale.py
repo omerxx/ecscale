@@ -5,57 +5,65 @@ SCALE_IN_CPU_TH=30
 SCALE_IN_MEM_TH=60
 
 
-def clusters():
+def clusters(client):
     # Returns an iterable list of cluster names
-    pass()
+    response = client.list_clusters()
+    if not response['clusterArns']:
+        print 'No ECS cluster found'
+        exit
+
+    return [cluster.split('/')[1] for cluster in response['clusterArns']]
 
 
 def cluster_memory_reservation():
-    pass()
+    pass
 
 
 def ec2_avg_cpu_utilization():
-    pass()
+    pass
 
 
 def empty_instances(cluster):
     # Returns a list of empty instances in cluster
-    pass()
+    pass
 
 
 def draining_instances(cluster):
     # Returns a list of draining instances in cluster
-    pass()
+    pass
 
 
 def terminate_decrease(instanceId):
     # Terminates an instance and decreases the desired number in its auto scaling group
-    pass()
+    pass
 
 
 def scale_in(cluster):
     # Iterates over hosts, finds the least utilized:
     #### top free memory -> lowest number of tasks
     # Drain the instance
+    pass
 
 
 def running_tasks(instance):
     # Return a number of running tasks on a given ECS host
-    pass()
+    pass
 
 
 def drain_instance(instance):
     # Put a given ec2 into draining state 
-    pass()
+    pass
 
 
 def main():
-    for cluster in clusters():
+    ecsClient = boto3.client('ecs')
+
+    for cluster in clusters(ecsClient):
         if empty_instances(cluster):
             for instance in empty_instances(cluster):
                 drain_instance(instance)
 
-        if draining_instances(cluster):
+        if draining_instances(cluster): 
             for instance in draining_instances(cluster):
                 if not running_tasks(instance):
                     terminate_decrease(instance)
@@ -66,13 +74,8 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
-
-
-
-
-
-
+    #main()
+    clusters(client = boto3.client('ecs'))
 
 
 
