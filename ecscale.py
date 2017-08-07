@@ -75,20 +75,28 @@ def empty_instances(clusterArn, ecsClient):
     instances = []
     empty_instances = []
     response = ecsClient.list_container_instances(cluster=clusterArn, status='ACTIVE')
-    for inst in response['containerInstanceArns']:
-        instances.append(inst)
 
-    response = ecsClient.describe_container_instances(cluster=clusterArn, containerInstances=instances)
-    for inst in response['containerInstances']:
-        if inst['runningTasksCount'] == 0 and inst['pendingTasksCount'] == 0:
-            empty_instances.append[inst['ec2InstanceId']]
+    if response['containerInstanceArns']: 
+        response = ecsClient.describe_container_instances(cluster=clusterArn, containerInstances=response['containerInstanceArns'])
+        for inst in response['containerInstances']:
+            if inst['runningTasksCount'] == 0 and inst['pendingTasksCount'] == 0:
+                empty_instances.append[inst['ec2InstanceId']]
 
     return empty_instances
 
 
-def draining_instances(cluster):
+def draining_instances(clusterArn, ecsClient):
     # returns a list of draining instances in cluster
-    pass
+    instances = []
+    draining_instances = []
+    response = ecsClient.list_container_instances(cluster=clusterArn, status='DRAINING')
+
+    if response['containerInstanceArns']:
+        response = ecsClient.describe_container_instances(cluster=clusterArn, containerInstances=response['containerInstanceArns'])
+        for inst in response['containerInstances']:
+            draining_instances.append(inst['ec2InstanceId'])
+
+    return draining_instances
 
 
 def terminate_decrease(instanceid):
@@ -146,9 +154,9 @@ if __name__ == '__main__':
     #cluster_memory_reservation(boto3.client('cloudwatch'))
 
     #ec2_avg_cpu_utilization('prod-machine', boto3.client('autoscaling'), boto3.client('cloudwatch'))
-    empty_instances('arn:aws:ecs:us-east-1:017894670386:cluster/prod-machine', boto3.client('ecs'))
+    #empty_instances('arn:aws:ecs:us-east-1:017894670386:cluster/prod-machine', boto3.client('ecs'))
     #print clusters(boto3.client('ecs'), type='arn')
-
+    draining_instances('arn:aws:ecs:us-east-1:017894670386:cluster/prod-machine', boto3.client('ecs'))
 
 
 
