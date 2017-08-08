@@ -166,6 +166,7 @@ def drain_instance(containerInstanceId, ecsClient, clusterArn):
 
 def future_reservation(cluster):
     # return cluster_mem_reserve*num_of_ec2 / num_of_ec2-1
+
     pass
 
 
@@ -236,7 +237,7 @@ if __name__ == '__main__':
     
     #print clusters(boto3.client('ecs'), type='arn')
     #draining_instances('arn:aws:ecs:us-east-1:017894670386:cluster/prod-machine', boto3.client('ecs'))
-    #terminate_decrease('i-60b8041fc4bda3ba', boto3.client('autoscaling'))
+    #terminate_decrease('i-06882bc271b0549b6', boto3.client('autoscaling'))
     #print scale_in_instance('arn:aws:ecs:us-east-1:017894670386:cluster/prerender-read', activeContainerDescribed)
     #print running_tasks('i-0a1c7430ffc94f', activeContainerDescribed)
     #drain_instance('arn:aws:ecs:us-east-1:017894670386:container-instance/13c7488a-edbf-4843-ac44-a615476aead1', ecsClient, 'arn:aws:ecs:us-east-1:017894670386:cluster/prerender-read')
