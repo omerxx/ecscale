@@ -70,51 +70,81 @@ def ec2_avg_cpu_utilization(clusterName, asgclient, cwclient):
     return response['datapoints'][0]['average']
 
 
-def empty_instances(clusterArn, ecsClient):
+def empty_instances(clusterArn, activeContainerDescribed):
     # returns a list of empty instances in cluster
     instances = []
     empty_instances = []
-    response = ecsClient.list_container_instances(cluster=clusterArn, status='ACTIVE')
 
-    if response['containerInstanceArns']: 
-        response = ecsClient.describe_container_instances(cluster=clusterArn, containerInstances=response['containerInstanceArns'])
-        for inst in response['containerInstances']:
-            if inst['runningTasksCount'] == 0 and inst['pendingTasksCount'] == 0:
-                empty_instances.append[inst['ec2InstanceId']]
+    for inst in activeContainerDescribed['containerInstances']:
+        if inst['runningTasksCount'] == 0 and inst['pendingTasksCount'] == 0:
+            empty_instances.append(inst['ec2InstanceId'])
 
     return empty_instances
 
 
-def draining_instances(clusterArn, ecsClient):
+def draining_instances(clusterArn, drainingContainerDescribed):
     # returns a list of draining instances in cluster
     instances = []
     draining_instances = []
-    response = ecsClient.list_container_instances(cluster=clusterArn, status='DRAINING')
 
-    if response['containerInstanceArns']:
-        response = ecsClient.describe_container_instances(cluster=clusterArn, containerInstances=response['containerInstanceArns'])
-        for inst in response['containerInstances']:
-            draining_instances.append(inst['ec2InstanceId'])
+    for inst in drainingContainerDescribed['containerInstances']:
+        draining_instances.append(inst['ec2InstanceId'])
 
     return draining_instances
 
 
-def terminate_decrease(instanceid):
+def terminate_decrease(instanceId, asgClient):
     # terminates an instance and decreases the desired number in its auto scaling group
     # [ only if desired > minimum ]
-    pass
+    try:
+        response = asgClient.terminate_instance_in_auto_scaling_group(
+            InstanceId=instanceId,
+            ShouldDecrementDesiredCapacity=True
+        )
+        print response['Activity']['Cause']
+
+    except Exception as e:
+        print 'Termination failed: {}'.format(e)
 
 
-def scale_in(cluster):
+def scale_in_instance(clusterArn, activeContainerDescribed):
     # iterates over hosts, finds the least utilized:
-    #### top free memory -> lowest number of tasks
-    # drain the instance
-    pass
+    # The most under-utilized memory and minimum running tasks
+    # return instanceId
+    instanceToScale = {'id': '', 'running': 0, 'freemem': 0}
+    for inst in activeContainerDescribed['containerInstances']:
+        print 'REMAINING' + str(inst['runningTasksCount'])
+        for res in inst['remainingResources']:
+            if res['name'] == 'MEMORY':
+                if res['integerValue'] > instanceToScale['freemem']:
+                    instanceToScale['freemem'] = res['integerValue']
+                    instanceToScale['id'] = inst['ec2InstanceId']
+                    instanceToScale['running'] = inst['runningTasksCount'] 
+                elif res['integerValue'] == instanceToScale['freemem']:
+                    # Two instances with same free memory level, choose the one with less running tasks
+                    if inst['runningTasksCount'] < instanceToScale['running']:
+                        instanceToScale['freemem'] = res['integerValue']
+                        instanceToScale['id'] = inst['ec2InstanceId']
+                        instanceToScale['running'] = inst['runningTasksCount'] 
+                break
 
+    else:
+        print 'No active containers'
+        exit
 
-def running_tasks(instance):
+    print 'Scale candidate: {}'.format(instanceToScale)
+    return instanceToScale['id']
+
+    
+def running_tasks(instanceId, activeContainerDescribed):
     # return a number of running tasks on a given ecs host
-    pass
+    for inst in activeContainerDescribed['containerInstances']:
+        if inst['ec2InstanceId'] == instanceId:
+            return int(inst['runningTasksCount']) + int(inst['pendingTasksCount']) 
+    
+    else:
+        print 'Instance not found'
+        exit
 
 
 def drain_instance(instance):
@@ -128,10 +158,28 @@ def future_reservation(cluster):
 
 
 def main():
-    ecsclient = boto3.client('ecs')
-    cwclient = boto3.client('cloudwatch')
-    asgclient = boto3.client('autoscaling')
+    ecsClient = boto3.client('ecs')
+    cwClient = boto3.client('cloudwatch')
+    asgClient = boto3.client('autoscaling')
+
+
     for cluster in clusters(ecsclient):
+        ## Retrieve container instances data: ##
+        activeContainerInstances = ecsClient.list_container_instances(cluster=clusterArn, status='ACTIVE')
+        if activeContainerInstances['containerInstanceArns']:
+            activeContainerDescribed = ecsClient.describe_container_instances(cluster=clusterArn, containerInstances=activeContainerInstances['containerInstanceArns'])
+        else: 
+            print 'No active instances in cluster.'
+            break
+        drainingContainerInstances = ecsClient.list_container_instances(cluster=clusterArn, status='DRAINING')
+        if drainingContainerInstances['containerInstanceArns']: 
+            drainingContainerDescribed = ecsClient.describe_container_instances(cluster=clusterArn, containerInstances=drainingContainerInstances['containerInstanceArns'])
+        else:
+            drainingContainerDescribed = []
+            print 'No draining containers in cluster'
+        ######### End of data retrieval #########
+
+
         if empty_instances(cluster):
             for instance in empty_instances(cluster):
                 drain_instance(instance)
@@ -145,20 +193,38 @@ def main():
             if (cluster_memory_reservation(cluster) < scale_in_mem_th): 
                 if (ec2_avg_cpu_utilization(cluster) < scale_in_cpu_th):
                 # cluster hosts can be scaled in
-                    scale_in(cluster)            
+                    drain_instance(scale_in_instance(cluster))
 
 
 if __name__ == '__main__':
+    ecsClient = boto3.client('ecs')
+    cwClient = boto3.client('cloudwatch')
+    asgClient = boto3.client('autoscaling')
+    clusterArn = 'arn:aws:ecs:us-east-1:017894670386:cluster/prerender-read' 
+    activeContainerInstances = ecsClient.list_container_instances(cluster=clusterArn, status='ACTIVE')
+    if activeContainerInstances['containerInstanceArns']:
+        activeContainerDescribed = ecsClient.describe_container_instances(cluster=clusterArn, containerInstances=activeContainerInstances['containerInstanceArns'])
+        exit
+    else:
+        print 'No active instances in cluster.'
+        
+    drainingContainerInstances = ecsClient.list_container_instances(cluster=clusterArn, status='DRAINING')
+    if drainingContainerInstances['containerInstanceArns']: 
+        drainingContainerDescribed = ecsClient.describe_container_instances(cluster=clusterArn, containerInstances=drainingContainerInstances['containerInstanceArns'])
+    else:
+        drainingContainerDescribed = []
+        print 'No draining containers in cluster'
+    
     #main()
-    #clusters(boto3.client('ecs'))
+    #print clusters(boto3.client('ecs'), type='arn')
     #cluster_memory_reservation(boto3.client('cloudwatch'))
 
     #ec2_avg_cpu_utilization('prod-machine', boto3.client('autoscaling'), boto3.client('cloudwatch'))
-    #empty_instances('arn:aws:ecs:us-east-1:017894670386:cluster/prod-machine', boto3.client('ecs'))
+    #print empty_instances('arn:aws:ecs:us-east-1:017894670386:cluster/prod-machine', activeContainerDescribed)
+    
     #print clusters(boto3.client('ecs'), type='arn')
-    draining_instances('arn:aws:ecs:us-east-1:017894670386:cluster/prod-machine', boto3.client('ecs'))
-
-
-
-
-
+    #draining_instances('arn:aws:ecs:us-east-1:017894670386:cluster/prod-machine', boto3.client('ecs'))
+    #terminate_decrease('i-60b8041fc4bda3ba', boto3.client('autoscaling'))
+    #print scale_in_instance('arn:aws:ecs:us-east-1:017894670386:cluster/prerender-read', activeContainerDescribed)
+    #print running_tasks('i-0a1c7430ffc94f', activeContainerDescribed)
+    
