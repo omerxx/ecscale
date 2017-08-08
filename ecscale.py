@@ -158,7 +158,7 @@ def drain_instance(containerInstanceId, ecsClient, clusterArn):
             containerInstances=[containerInstanceId],
             status='DRAINING'
         )
-        print response['Activity']['Cause']
+        print 'Done draining'            
 
     except Exception as e:
         print 'Draining failed: {}'.format(e) 
@@ -240,4 +240,4 @@ if __name__ == '__main__':
     #terminate_decrease('i-06882bc271b0549b6', boto3.client('autoscaling'))
     #print scale_in_instance('arn:aws:ecs:us-east-1:017894670386:cluster/prerender-read', activeContainerDescribed)
     #print running_tasks('i-0a1c7430ffc94f', activeContainerDescribed)
-    #drain_instance('arn:aws:ecs:us-east-1:017894670386:container-instance/13c7488a-edbf-4843-ac44-a615476aead1', ecsClient, 'arn:aws:ecs:us-east-1:017894670386:cluster/prerender-read')
+    drain_instance('arn:aws:ecs:us-east-1:017894670386:container-instance/13c7488a-edbf-4843-ac44-a615476aead1', ecsClient, 'arn:aws:ecs:us-east-1:017894670386:cluster/prerender-read')
