@@ -48,7 +48,7 @@ def find_asg(clusterName, asgClient):
         for tag in asg['Tags']:
             if tag['Key'] == 'Name':
                 if tag['Value'].split(' ')[0] == clusterName:
-                    return tag['resourceid']
+                    return tag['ResourceId']
 
     else:
         print 'auto scaling group for {} not found. exiting'.format(clusterName)
@@ -57,20 +57,20 @@ def find_asg(clusterName, asgClient):
 def ec2_avg_cpu_utilization(clusterName, asgclient, cwclient):
     asg = find_asg(clusterName, asgclient)
     response = cwclient.get_metric_statistics( 
-        namespace='aws/ec2',
-        metricname='cpuutilization',
-        dimensions=[
+        Namespace='AWS/EC2',
+        MetricName='CPUUtilization',
+        Dimensions=[
             {
-                'name': 'autoscalinggroupname',
-                'value': asg
+                'Name': 'AutoScalingGroupName',
+                'Value': asg
             },
         ],
-        starttime=datetime.datetime.utcnow() - datetime.timedelta(seconds=120),
-        endtime=datetime.datetime.utcnow(),
-        period=60,
-        statistics=['average']
+        StartTime=datetime.datetime.utcnow() - datetime.timedelta(seconds=120),
+        EndTime=datetime.datetime.utcnow(),
+        Period=60,
+        Statistics=['Average']
     )
-    return response['datapoints'][0]['average']
+    return response['Datapoints'][0]['Average']
 
 
 def empty_instances(clusterArn, activeContainerDescribed):
@@ -116,7 +116,6 @@ def scale_in_instance(clusterArn, activeContainerDescribed):
     # return instance obj {instanceId, runningInstances, containerinstanceArn}
     instanceToScale = {'id': '', 'running': 0, 'freemem': 0}
     for inst in activeContainerDescribed['containerInstances']:
-        print 'REMAINING' + str(inst['runningTasksCount'])
         for res in inst['remainingResources']:
             if res['name'] == 'MEMORY':
                 if res['integerValue'] > instanceToScale['freemem']:
@@ -134,8 +133,6 @@ def scale_in_instance(clusterArn, activeContainerDescribed):
                         instanceToScale['containerInstanceArn'] = inst['containerInstanceArn']
                 break
 
-    else:
-        print 'No active containers in cluster'
     print 'Scale candidate: {}'.format(instanceToScale)
     return instanceToScale
 
@@ -168,7 +165,12 @@ def future_reservation(activeContainerDescribed, clusterMemReservation):
     # If the cluster were to scale in an instance, calculate the effect on mem reservation
     # return cluster_mem_reserve*num_of_ec2 / num_of_ec2-1
     numOfEc2 = len(activeContainerDescribed['containerInstances'])
-    futureMem = (clusterMemReservation*numOfEc2) / (numOfEc2-1)
+    if numOfEc2 > 1:
+        futureMem = (clusterMemReservation*numOfEc2) / (numOfEc2-1)
+    else:
+        print 'Less than 1 instance, cannot calculate future reservation'
+        return 100
+
     print 'Current reservation vs Future: {} : {}'.format(clusterMemReservation, futureMem)
     return futureMem
 
@@ -198,63 +200,31 @@ def main():
         else:
             drainingContainerDescribed = []
             drainingInstances = {}
-            #print 'No draining containers in cluster {}'.format(clusterName)
         emptyInstances = empty_instances(cluster, activeContainerDescribed)
-        
         ######### End of data retrieval #########
 
-        if emptyInstances.keys():
-            for instanceId, containerInstId in emptyInstances.iteritems():
-                print 'I am draining {}'.format(instanceId)
-                drain_instance(containerInstId, ecsClient, cluster)
+        if (future_reservation(activeContainerDescribed, clusterMemReservation) < FUTURE_MEM_TH): 
+            if emptyInstances.keys():
+                for instanceId, containerInstId in emptyInstances.iteritems():
+                    print 'I am draining {}'.format(instanceId)
+                    drain_instance(containerInstId, ecsClient, cluster)
+
+            if (clusterMemReservation < SCALE_IN_MEM_TH): 
+                if (ec2_avg_cpu_utilization(clusterName, asgClient, cwClient) < SCALE_IN_CPU_TH):
+                # cluster hosts can be scaled in
+                    instanceToScale = scale_in_instance(cluster, activeContainerDescribed)['containerInstanceArn']
+                    print 'Going to scale {}'.format(instanceToScale)
+                    drain_instance(instanceToScale, ecsClient, cluster)
+
 
         if drainingInstances.keys():
             for instanceId, containerInstId in drainingInstances.iteritems():
                 if not running_tasks(instanceId, drainingContainerDescribed):
+                    print 'Terminating draining instance with no containers {}'.format(instanceId)
                     terminate_decrease(instanceId, asgClient)
-
-        # if (future_reservation(activeContainerDescribed, clusterMemReservation) < FUTURE_MEM_TH): 
-        #     if (clusterMemReservation < SCALE_IN_MEM_TH: 
-        #         if (ec2_avg_cpu_utilization(cluster) < SCALE_IN_CPU_TH):
-        #         # cluster hosts can be scaled in
-        #             drain_instance(scale_in_instance(cluster)['containerInstanceArn'])
+                else:
+                    print 'Draining instance not empty'
 
 
 if __name__ == '__main__':
-    # ecsClient = boto3.client('ecs')
-    # cwClient = boto3.client('cloudwatch')
-    # asgClient = boto3.client('autoscaling')
-    # clusterArn = 'arn:aws:ecs:us-east-1:017894670386:cluster/prerender-read' 
-    # activeContainerInstances = ecsClient.list_container_instances(cluster=clusterArn, status='ACTIVE')
-    # if activeContainerInstances['containerInstanceArns']:
-    #     activeContainerDescribed = ecsClient.describe_container_instances(cluster=clusterArn, containerInstances=activeContainerInstances['containerInstanceArns'])
-    #     exit
-    # else:
-    #     print 'No active instances in cluster.'
-        
-    # drainingContainerInstances = ecsClient.list_container_instances(cluster=clusterArn, status='DRAINING')
-    # if drainingContainerInstances['containerInstanceArns']: 
-    #     drainingContainerDescribed = ecsClient.describe_container_instances(cluster=clusterArn, containerInstances=drainingContainerInstances['containerInstanceArns'])
-    # else:
-    #     drainingContainerDescribed = []
-    #     print 'No draining containers in cluster'
-        
-    # clusterMemReservation = cluster_memory_reservation(cwClient, 'prerender-read')
-    
-
-    #main()
-    #print clusters(boto3.client('ecs'), type='arn')
-    #cluster_memory_reservation(boto3.client('cloudwatch'))
-
-    #ec2_avg_cpu_utilization('prod-machine', boto3.client('autoscaling'), boto3.client('cloudwatch'))
-    #print empty_instances('arn:aws:ecs:us-east-1:017894670386:cluster/prod-machine', activeContainerDescribed)
-    
-    #print clusters(boto3.client('ecs'), type='arn')
-    #draining_instances('arn:aws:ecs:us-east-1:017894670386:cluster/prod-machine', boto3.client('ecs'))
-    #terminate_decrease('i-06882bc271b0549b6', boto3.client('autoscaling'))
-    #print scale_in_instance('arn:aws:ecs:us-east-1:017894670386:cluster/prerender-read', activeContainerDescribed)
-    #print running_tasks('i-0a1c7430ffc94f', activeContainerDescribed)
-    #drain_instance('arn:aws:ecs:us-east-1:017894670386:container-instance/13c7488a-edbf-4843-ac44-a615476aead1', ecsClient, 'arn:aws:ecs:us-east-1:017894670386:cluster/prerender-read')
-    #print future_reservation(activeContainerDescribed, clusterMemReservation)
-
-    main() 
+    main()
