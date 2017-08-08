@@ -37,7 +37,7 @@ def cluster_memory_reservation(cwClient, clusterName):
         )
         return response['Datapoints'][0]['Average']
 
-    except Exception as e:
+    except Exception:
         print 'Could not retrieve mem reservation for {}'.format(clusterName)
 
 
@@ -51,7 +51,7 @@ def find_asg(clusterName, asgClient):
                     return tag['resourceid']
 
     else:
-        print 'auto scaling group for {} not found. exiting'.format(cluster)
+        print 'auto scaling group for {} not found. exiting'.format(clusterName)
 
 
 def ec2_avg_cpu_utilization(clusterName, asgclient, cwclient):
@@ -74,26 +74,24 @@ def ec2_avg_cpu_utilization(clusterName, asgclient, cwclient):
 
 
 def empty_instances(clusterArn, activeContainerDescribed):
-    # returns a list of empty instances in cluster
+    # returns a object of empty instances in cluster
     instances = []
-    empty_instances = []
+    empty_instances = {}
 
     for inst in activeContainerDescribed['containerInstances']:
         if inst['runningTasksCount'] == 0 and inst['pendingTasksCount'] == 0:
-            empty_instances.append(inst['ec2InstanceId'])
+            empty_instances.update({inst['ec2InstanceId']: inst['containerInstanceArn']})
 
-    # ------------------------------------------------------------>
-    # TODO: MAKE THIS RETURN AN OBJECT THAT CONTAINS THE CONTAINER INSTANCE ID TOO!
     return empty_instances
 
 
 def draining_instances(clusterArn, drainingContainerDescribed):
-    # returns a list of draining instances in cluster
+    # returns an object of draining instances in cluster
     instances = []
-    draining_instances = []
+    draining_instances = {} 
 
     for inst in drainingContainerDescribed['containerInstances']:
-        draining_instances.append(inst['ec2InstanceId'])
+        draining_instances.update({inst['ec2InstanceId']: inst['containerInstanceArn']})
 
     return draining_instances
 
@@ -142,9 +140,9 @@ def scale_in_instance(clusterArn, activeContainerDescribed):
     return instanceToScale
 
     
-def running_tasks(instanceId, activeContainerDescribed):
+def running_tasks(instanceId, containerDescribed):
     # return a number of running tasks on a given ecs host
-    for inst in activeContainerDescribed['containerInstances']:
+    for inst in containerDescribed['containerInstances']:
         if inst['ec2InstanceId'] == instanceId:
             return int(inst['runningTasksCount']) + int(inst['pendingTasksCount']) 
     
@@ -196,24 +194,24 @@ def main():
         drainingContainerInstances = ecsClient.list_container_instances(cluster=cluster, status='DRAINING')
         if drainingContainerInstances['containerInstanceArns']: 
             drainingContainerDescribed = ecsClient.describe_container_instances(cluster=cluster, containerInstances=drainingContainerInstances['containerInstanceArns'])
+            drainingInstances = draining_instances(cluster, drainingContainerDescribed)
         else:
             drainingContainerDescribed = []
+            drainingInstances = {}
             #print 'No draining containers in cluster {}'.format(clusterName)
         emptyInstances = empty_instances(cluster, activeContainerDescribed)
-        drainingInstances = draining_instances(cluster)
+        
         ######### End of data retrieval #########
 
+        if emptyInstances.keys():
+            for instanceId, containerInstId in emptyInstances.iteritems():
+                print 'I am draining {}'.format(instanceId)
+                drain_instance(containerInstId, ecsClient, cluster)
 
-        if emptyInstances:
-            for instance in emptyInstances:
-                print 'I am draining {}'.format(instance)
-                drain_instance(containerInstanceId, ????)
-
-        if drainingInstances: 
-            for instance in drainingInstances:
-                if not running_tasks(instance):
-                    # terminate_decrease(instance)
-                    print 'I want to terminate draining instance with no containers {}'.format(instance)
+        if drainingInstances.keys():
+            for instanceId, containerInstId in drainingInstances.iteritems():
+                if not running_tasks(instanceId, drainingContainerDescribed):
+                    terminate_decrease(instanceId, asgClient)
 
         # if (future_reservation(activeContainerDescribed, clusterMemReservation) < FUTURE_MEM_TH): 
         #     if (clusterMemReservation < SCALE_IN_MEM_TH: 
