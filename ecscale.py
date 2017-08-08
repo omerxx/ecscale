@@ -110,7 +110,7 @@ def terminate_decrease(instanceId, asgClient):
 def scale_in_instance(clusterArn, activeContainerDescribed):
     # iterates over hosts, finds the least utilized:
     # The most under-utilized memory and minimum running tasks
-    # return instanceId
+    # return instance obj {instanceId, runningInstances, containerinstanceArn}
     instanceToScale = {'id': '', 'running': 0, 'freemem': 0}
     for inst in activeContainerDescribed['containerInstances']:
         print 'REMAINING' + str(inst['runningTasksCount'])
@@ -119,13 +119,16 @@ def scale_in_instance(clusterArn, activeContainerDescribed):
                 if res['integerValue'] > instanceToScale['freemem']:
                     instanceToScale['freemem'] = res['integerValue']
                     instanceToScale['id'] = inst['ec2InstanceId']
-                    instanceToScale['running'] = inst['runningTasksCount'] 
+                    instanceToScale['running'] = inst['runningTasksCount']
+                    instanceToScale['containerInstanceArn'] = inst['containerInstanceArn']
+                    
                 elif res['integerValue'] == instanceToScale['freemem']:
                     # Two instances with same free memory level, choose the one with less running tasks
                     if inst['runningTasksCount'] < instanceToScale['running']:
                         instanceToScale['freemem'] = res['integerValue']
                         instanceToScale['id'] = inst['ec2InstanceId']
                         instanceToScale['running'] = inst['runningTasksCount'] 
+                        instanceToScale['containerInstanceArn'] = inst['containerInstanceArn']
                 break
 
     else:
@@ -133,7 +136,7 @@ def scale_in_instance(clusterArn, activeContainerDescribed):
         exit
 
     print 'Scale candidate: {}'.format(instanceToScale)
-    return instanceToScale['id']
+    return instanceToScale
 
     
 def running_tasks(instanceId, activeContainerDescribed):
@@ -147,9 +150,18 @@ def running_tasks(instanceId, activeContainerDescribed):
         exit
 
 
-def drain_instance(instance):
-    # put a given ec2 into draining state 
-    pass
+def drain_instance(containerInstanceId, ecsClient, clusterArn):
+    # put a given ec2 into draining state
+    try:
+        response = ecsClient.update_container_instances_state(
+            cluster=clusterArn,
+            containerInstances=[containerInstanceId],
+            status='DRAINING'
+        )
+        print response['Activity']['Cause']
+
+    except Exception as e:
+        print 'Draining failed: {}'.format(e) 
 
 
 def future_reservation(cluster):
@@ -193,7 +205,7 @@ def main():
             if (cluster_memory_reservation(cluster) < scale_in_mem_th): 
                 if (ec2_avg_cpu_utilization(cluster) < scale_in_cpu_th):
                 # cluster hosts can be scaled in
-                    drain_instance(scale_in_instance(cluster))
+                    drain_instance(scale_in_instance(cluster)['containerInstanceArn'])
 
 
 if __name__ == '__main__':
@@ -227,4 +239,4 @@ if __name__ == '__main__':
     #terminate_decrease('i-60b8041fc4bda3ba', boto3.client('autoscaling'))
     #print scale_in_instance('arn:aws:ecs:us-east-1:017894670386:cluster/prerender-read', activeContainerDescribed)
     #print running_tasks('i-0a1c7430ffc94f', activeContainerDescribed)
-    
+    #drain_instance('arn:aws:ecs:us-east-1:017894670386:container-instance/13c7488a-edbf-4843-ac44-a615476aead1', ecsClient, 'arn:aws:ecs:us-east-1:017894670386:cluster/prerender-read')
