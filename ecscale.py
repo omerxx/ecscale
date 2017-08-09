@@ -175,6 +175,36 @@ def future_reservation(activeContainerDescribed, clusterMemReservation):
     return futureMem
 
 
+def retrieve_cluster_data(ecsClient, cwClient, asgClient, cluster):
+    clusterName = cluster.split('/')[1]
+    print '*** {} ***'.format(clusterName)
+    activeContainerInstances = ecsClient.list_container_instances(cluster=cluster, status='ACTIVE')
+    clusterMemReservation = cluster_memory_reservation(cwClient, clusterName)
+    
+    if activeContainerInstances['containerInstanceArns']:
+        activeContainerDescribed = ecsClient.describe_container_instances(cluster=cluster, containerInstances=activeContainerInstances['containerInstanceArns'])
+    else: 
+        print 'No active instances in cluster'
+        return False 
+    drainingContainerInstances = ecsClient.list_container_instances(cluster=cluster, status='DRAINING')
+    if drainingContainerInstances['containerInstanceArns']: 
+        drainingContainerDescribed = ecsClient.describe_container_instances(cluster=cluster, containerInstances=drainingContainerInstances['containerInstanceArns'])
+        drainingInstances = draining_instances(cluster, drainingContainerDescribed)
+    else:
+        drainingInstances = {}
+    emptyInstances = empty_instances(cluster, activeContainerDescribed)
+
+    dataObj = { 
+        'clusterName': clusterName,
+        'clusterMemReservation': clusterMemReservation,
+        'activeContainerDescribed': activeContainerDescribed,
+        'drainingInstances': drainingInstances,
+        'emptyInstances': emptyInstances        
+    }
+
+    return dataObj
+
+
 def main():
     ecsClient = boto3.client('ecs')
     cwClient = boto3.client('cloudwatch')
@@ -183,45 +213,39 @@ def main():
 
     for cluster in clusterList:
         ########### Cluster data retrival ##########
-        clusterName = cluster.split('/')[1]
-        print '*** {} ***'.format(clusterName)
-        activeContainerInstances = ecsClient.list_container_instances(cluster=cluster, status='ACTIVE')
-        clusterMemReservation = cluster_memory_reservation(cwClient, clusterName)
-        
-        if activeContainerInstances['containerInstanceArns']:
-            activeContainerDescribed = ecsClient.describe_container_instances(cluster=cluster, containerInstances=activeContainerInstances['containerInstanceArns'])
-        else: 
-            print 'No active instances in cluster'
-            continue 
-        drainingContainerInstances = ecsClient.list_container_instances(cluster=cluster, status='DRAINING')
-        if drainingContainerInstances['containerInstanceArns']: 
-            drainingContainerDescribed = ecsClient.describe_container_instances(cluster=cluster, containerInstances=drainingContainerInstances['containerInstanceArns'])
-            drainingInstances = draining_instances(cluster, drainingContainerDescribed)
+        clusterData = retrieve_cluster_data(ecsClient, cwClient, asgClient, cluster)
+        if not clusterData:
+            continue
         else:
-            drainingContainerDescribed = []
-            drainingInstances = {}
-        emptyInstances = empty_instances(cluster, activeContainerDescribed)
-        ########### End of data retrieval ###########
+            clusterName = clusterData['clusterName']
+            clusterMemReservation = clusterData['clusterMemReservation']
+            activeContainerDescribed = clusterData['activeContainerDescribed']
+            drainingInstances = clusterData['drainingInstances']
+            emptyInstances = clusterData['emptyInstances']
 
-        if (future_reservation(activeContainerDescribed, clusterMemReservation) < FUTURE_MEM_TH): 
+        ########## Cluster scaling rules ###########
+        if (clusterMemReservation < FUTURE_MEM_TH) and (future_reservation(activeContainerDescribed, clusterMemReservation) < FUTURE_MEM_TH): 
+        # Future memory levels allow scale
+            
             if emptyInstances.keys():
+            # There are empty instances                
                 for instanceId, containerInstId in emptyInstances.iteritems():
                     print 'I am draining {}'.format(instanceId)
-                    drain_instance(containerInstId, ecsClient, cluster)
+                    #drain_instance(containerInstId, ecsClient, cluster)
 
-            if (clusterMemReservation < SCALE_IN_MEM_TH): 
+            if (clusterMemReservation < SCALE_IN_MEM_TH):
+            # Cluster mem reservation level requires scale
                 if (ec2_avg_cpu_utilization(clusterName, asgClient, cwClient) < SCALE_IN_CPU_TH):
-                # cluster hosts can be scaled in
                     instanceToScale = scale_in_instance(cluster, activeContainerDescribed)['containerInstanceArn']
                     print 'Going to scale {}'.format(instanceToScale)
-                    drain_instance(instanceToScale, ecsClient, cluster)
-
+                    #drain_instance(instanceToScale, ecsClient, cluster)
 
         if drainingInstances.keys():
+        # There are draining instsnces to terminate
             for instanceId, containerInstId in drainingInstances.iteritems():
                 if not running_tasks(instanceId, drainingContainerDescribed):
                     print 'Terminating draining instance with no containers {}'.format(instanceId)
-                    terminate_decrease(instanceId, asgClient)
+                    #terminate_decrease(instanceId, asgClient)
                 else:
                     print 'Draining instance not empty'
 
