@@ -182,7 +182,7 @@ def main():
     clusterList = clusters(ecsClient)
 
     for cluster in clusterList:
-        ## Retrieve container instances data: ##
+        ########### Cluster data retrival ##########
         clusterName = cluster.split('/')[1]
         print '*** {} ***'.format(clusterName)
         activeContainerInstances = ecsClient.list_container_instances(cluster=cluster, status='ACTIVE')
@@ -201,7 +201,7 @@ def main():
             drainingContainerDescribed = []
             drainingInstances = {}
         emptyInstances = empty_instances(cluster, activeContainerDescribed)
-        ######### End of data retrieval #########
+        ########### End of data retrieval ###########
 
         if (future_reservation(activeContainerDescribed, clusterMemReservation) < FUTURE_MEM_TH): 
             if emptyInstances.keys():
