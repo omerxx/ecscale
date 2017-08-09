@@ -1,12 +1,13 @@
 #!/bin/python
 import boto3
 import datetime
+from optparse import OptionParser
 
 SCALE_IN_CPU_TH = 30
 SCALE_IN_MEM_TH = 60
-FUTURE_MEM_TH = 75
+FUTURE_MEM_TH = 70
 ECS_AVOID_STR = 'awseb'
-DRY_RUN = False 
+DRY_RUN = False
 
 
 def clusters(ecsClient):
@@ -134,7 +135,7 @@ def scale_in_instance(clusterArn, activeContainerDescribed):
                         instanceToScale['containerInstanceArn'] = inst['containerInstanceArn']
                 break
 
-    print 'Scale candidate: {}'.format(instanceToScale)
+    print 'Scale candidate: {} with free {}'.format(instanceToScale['id'], instanceToScale['freemem'])
     return instanceToScale
 
     
@@ -193,6 +194,7 @@ def retrieve_cluster_data(ecsClient, cwClient, asgClient, cluster):
         drainingInstances = draining_instances(cluster, drainingContainerDescribed)
     else:
         drainingInstances = {}
+        drainingContainerDescribed = [] 
     emptyInstances = empty_instances(cluster, activeContainerDescribed)
 
     dataObj = { 
@@ -200,13 +202,14 @@ def retrieve_cluster_data(ecsClient, cwClient, asgClient, cluster):
         'clusterMemReservation': clusterMemReservation,
         'activeContainerDescribed': activeContainerDescribed,
         'drainingInstances': drainingInstances,
-        'emptyInstances': emptyInstances        
+        'emptyInstances': emptyInstances,
+        'drainingContainerDescribed': drainingContainerDescribed        
     }
 
     return dataObj
 
 
-def main():
+def main(run='normal'):
     ecsClient = boto3.client('ecs')
     cwClient = boto3.client('cloudwatch')
     asgClient = boto3.client('autoscaling')
@@ -231,7 +234,7 @@ def main():
             if emptyInstances.keys():
             # There are empty instances                
                 for instanceId, containerInstId in emptyInstances.iteritems():
-                    if DRY_RUN:
+                    if run == 'dry':
                         print 'Would have drained {}'.format(instanceId)  
                     else: 
                         print 'I am draining {}'.format(instanceId)
@@ -241,7 +244,7 @@ def main():
             # Cluster mem reservation level requires scale
                 if (ec2_avg_cpu_utilization(clusterName, asgClient, cwClient) < SCALE_IN_CPU_TH):
                     instanceToScale = scale_in_instance(cluster, activeContainerDescribed)['containerInstanceArn']
-                    if DRY_RUN:
+                    if run == 'dry':
                         print 'Would have scaled {}'.format(instanceToScale)  
                     else: 
                         print 'Going to scale {}'.format(instanceToScale)
@@ -250,12 +253,25 @@ def main():
         if drainingInstances.keys():
         # There are draining instsnces to terminate
             for instanceId, containerInstId in drainingInstances.iteritems():
-                if not running_tasks(instanceId, drainingContainerDescribed):
-                    print 'Terminating draining instance with no containers {}'.format(instanceId)
-                    terminate_decrease(instanceId, asgClient)
+                if not running_tasks(instanceId, clusterData['drainingContainerDescribed']):
+                    if run == 'dry':
+                        print 'Would have terminated {}'.format(instanceId)
+                    else:
+                        print 'Terminating draining instance with no containers {}'.format(instanceId)
+                        terminate_decrease(instanceId, asgClient)
                 else:
                     print 'Draining instance not empty'
 
 
 if __name__ == '__main__':
-    main()
+    parser = OptionParser()
+    parser.add_option("-k", "--key", dest="AWS_ACCESS_KEY_ID", help="write report to FILE")
+    parser.add_option("-s", "--secret", dest="AWS_SECRET_ACCESS_KEY", help="write report to FILE")
+    parser.add_option("-d", "--dry-run", action="store_true", dest="DRY_RUN", default=False, help="Run with no physical implications")
+    (options, args) = parser.parse_args()
+
+    if options.DRY_RUN:
+        main(run='dry')
+    else:
+        main()
+    
