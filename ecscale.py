@@ -170,7 +170,7 @@ def future_reservation(activeContainerDescribed, clusterMemReservation):
     if numOfEc2 > 1:
         futureMem = (clusterMemReservation*numOfEc2) / (numOfEc2-1)
     else:
-        print 'Less than 1 instance, cannot calculate future reservation'
+        print '1 instance, cannot calculate future reservation'
         return 100
 
     print 'Current reservation vs Future: {} : {}'.format(clusterMemReservation, futureMem)
@@ -265,9 +265,9 @@ def main(run='normal'):
 
 if __name__ == '__main__':
     parser = OptionParser()
-    parser.add_option("-k", "--key", dest="AWS_ACCESS_KEY_ID", help="write report to FILE")
-    parser.add_option("-s", "--secret", dest="AWS_SECRET_ACCESS_KEY", help="write report to FILE")
-    parser.add_option("-d", "--dry-run", action="store_true", dest="DRY_RUN", default=False, help="Run with no physical implications")
+    parser.add_option("-k", "--key", dest="AWS_ACCESS_KEY_ID", help="Provide AWS access key")
+    parser.add_option("-s", "--secret", dest="AWS_SECRET_ACCESS_KEY", help="Provide AWS secret key")
+    parser.add_option("-d", "--dry-run", action="store_true", dest="DRY_RUN", default=False, help="Dry run the process")
     (options, args) = parser.parse_args()
 
     if options.DRY_RUN:
