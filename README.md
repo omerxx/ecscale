@@ -1,32 +1,28 @@
-# ECS scaling-in
+# EC*S*CALE 
+## A servresless app removing underutilized hosts from ECS clusters
 
-# Scaling ECS down is not a stragitforward task;
-## Based on one metric solely, an instance could be taken down causing 2 effects:
- 1. Forcefully removing a host when a container is running will cut off active connections
+### Scaling ECS down is not a straightforward task;Based on one metric solely, an instance could be taken down causing 2 effects:
+ 1. Forcefully removing a host when a container is running will cut off active connections causing service downtime
  2. Removing an instance based on utilization / capacity metric may cause an endless loop of scale
 
 ----
 
-## To such an end, this tool will look for scaleable clusters based on multiple metrics.
+### To such an end, this tool will look for scaleable clusters based on multiple metrics
 Once identified, the target is moved to "draining" state, where a new instance of the same task is raised on an available host. Once the new containers are ready, the draining instsnce will start draining connection from active tasks.
 Once the draining process is complete, the instance will be terminated.
 
+____
 
-## Configurable parameters
+### Getting started:
+1. Add `ecscale.py` to AWS Lambda providing relevant role to handle ECS and EC2
+2. Set repeated run (recommended every 60 minutes as ec2 instances are paid hourly as it it)
 
-### Memory reservation levels (defaults to 55%)
-The tool searches for clusters with a total memory reservation lower than 55%.
-Note: Memory reservation is *not* memory utilization; it measures the actual memory "space" resrved for active containers, it only changes when a container is brought up or down, and can predict whether new container has "room" to operate in terms of virtual memory.
+____
 
-Note2: Having lower than 55% memory reservation is not a gurantee for scaleable clusters, one should optimize this level according to size of cluster, size of running containers, and the distribution of memory between tasks.
-
-
-### CPU Utilization levels (defaults to 20%)
-If the total levels of CPU utilization of all services running on the cluster is lower than this thershold, the cluster would be considered in-scaleable in terms of CPU.
-
-
-### Cluster engagment
-Determines whether the tool runs through all available ECS clusters in an account (`ENGAGE=all`),
-or searches for a prefix (`ENGAGE=prefix`, `PREFIX=abc`),
-or searches for a specific cluster (`ENGAGE=specific`, `CLUSTER=somename`)
-
+### Flow logic
+* Iterate over existing ECS cluster using AWS keys
+* Check a cluster's ability to scale-in based on predicted future memory reservation capacity
+* Look for empty hosts the can be scaled
+* Look for least utilized host
+* Choose a candidate and put in draining state
+* Terminate a draining host that has no running tasks and decrease the desired number of instances
