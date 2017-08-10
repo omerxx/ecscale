@@ -2,6 +2,7 @@
 import boto3
 import datetime
 from optparse import OptionParser
+import os
 
 SCALE_IN_CPU_TH = 30
 SCALE_IN_MEM_TH = 60
@@ -157,7 +158,6 @@ def drain_instance(containerInstanceId, ecsClient, clusterArn):
             containerInstances=[containerInstanceId],
             status='DRAINING'
         )
-        print 'Done draining'            
 
     except Exception as e:
         print 'Draining failed: {}'.format(e) 
@@ -170,10 +170,10 @@ def future_reservation(activeContainerDescribed, clusterMemReservation):
     if numOfEc2 > 1:
         futureMem = (clusterMemReservation*numOfEc2) / (numOfEc2-1)
     else:
-        print '1 instance, cannot calculate future reservation'
         return 100
 
-    print 'Current reservation vs Future: {} : {}'.format(clusterMemReservation, futureMem)
+    print '*** Current vs Future: {} : {}'.format(clusterMemReservation, futureMem)
+
     return futureMem
 
 
@@ -249,6 +249,8 @@ def main(run='normal'):
                     else: 
                         print 'Going to scale {}'.format(instanceToScale)
                         drain_instance(instanceToScale, ecsClient, cluster)
+                else:
+                    print 'CPU higher than TH, cannot scale'
 
         if drainingInstances.keys():
         # There are draining instsnces to terminate
@@ -262,16 +264,22 @@ def main(run='normal'):
                 else:
                     print 'Draining instance not empty'
 
+        print '***'
+
 
 if __name__ == '__main__':
     parser = OptionParser()
-    parser.add_option("-k", "--key", dest="AWS_ACCESS_KEY_ID", help="Provide AWS access key")
-    parser.add_option("-s", "--secret", dest="AWS_SECRET_ACCESS_KEY", help="Provide AWS secret key")
+    parser.add_option("-a", "--access-key", dest="AWS_ACCESS_KEY_ID", help="Provide AWS access key")
+    parser.add_option("-s", "--secret-key", dest="AWS_SECRET_ACCESS_KEY", help="Provide AWS secret key")
     parser.add_option("-d", "--dry-run", action="store_true", dest="DRY_RUN", default=False, help="Dry run the process")
     (options, args) = parser.parse_args()
 
-    if options.DRY_RUN:
-        main(run='dry')
-    else:
-        main()
+    if options.AWS_ACCESS_KEY_ID and options.AWS_SECRET_ACCESS_KEY:
+        os.environ['AWS_ACCESS_KEY_ID'] = options.AWS_ACCESS_KEY_ID
+        os.environ['AWS_SECRET_ACCESS_KEY'] = options.AWS_SECRET_ACCESS_KEY
+    elif options.AWS_ACCESS_KEY_ID or options.AWS_SECRET_ACCESS_KEY:
+        print 'AWS key or secret are missing'
+
+    runType = 'dry' if options.DRY_RUN else 'normal'
+    main(run=runType)
     
