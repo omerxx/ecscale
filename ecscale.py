@@ -8,7 +8,6 @@ SCALE_IN_CPU_TH = 30
 SCALE_IN_MEM_TH = 60
 FUTURE_MEM_TH = 70
 ECS_AVOID_STR = 'awseb'
-DRY_RUN = False
 
 
 def clusters(ecsClient):
