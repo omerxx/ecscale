@@ -265,8 +265,7 @@ def main(run='normal'):
 
         print '***'
 
-
-if __name__ == '__main__':
+def lambda_handler(event, context):
     parser = OptionParser()
     parser.add_option("-a", "--access-key", dest="AWS_ACCESS_KEY_ID", help="Provide AWS access key")
     parser.add_option("-s", "--secret-key", dest="AWS_SECRET_ACCESS_KEY", help="Provide AWS secret key")
@@ -281,4 +280,7 @@ if __name__ == '__main__':
 
     runType = 'dry' if options.DRY_RUN else 'normal'
     main(run=runType)
-    
+
+
+if __name__ == '__main__':
+   lambda_handler({}, '') 
