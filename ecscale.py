@@ -171,7 +171,7 @@ def future_reservation(activeContainerDescribed, clusterMemReservation):
     else:
         return 100
 
-    print '*** Current vs Future: {} : {}'.format(clusterMemReservation, futureMem)
+    print '*** Current: {} | Future : {}'.format(clusterMemReservation, futureMem)
 
     return futureMem
 
