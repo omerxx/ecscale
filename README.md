@@ -11,10 +11,17 @@ Once identified, the target is moved to "draining" state, where a new instance o
 Once the draining process is complete, the instance will be terminated.
 
 
-### Getting started:
-1. Add `ecscale.py` to AWS Lambda providing relevant role to handle ECS and EC2
-2. Set repeated run (recommended every 60 minutes as ec2 instances are paid hourly as it it)
+### Usage:
+1. Throw `ecscale.py` code to AWS Lambda providing relevant role to handle ECS and autoscaling (Instrcutions ahead) 
+2. Set repeated run (recommended every 60 minutes using a cloudwatch events trigger for Lambda)
+3. That's it... Your ECS hosts are being gracefully removed if needed. No metrics/alarms needed
 
+#### How to create a role to run ecscale:
+1. When creating the Lambda function, you'll be asked to select a role or create a new one, choose a new role
+2. Provide the json from `policy.json` to the role policy
+3. All set to allow ecscale to do its work
+
+#### Creating a Lambda function step by step:
 
 ### Flow logic
 * Iterate over existing ECS cluster using AWS keys
