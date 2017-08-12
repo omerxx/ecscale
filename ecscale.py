@@ -43,10 +43,9 @@ def cluster_memory_reservation(cwClient, clusterName):
         print 'Could not retrieve mem reservation for {}'.format(clusterName)
 
 
-def find_asg(clusterName, asgClient):
+def find_asg(clusterName, asgData):
     # Returns auto scaling group resourceId based on name
-    response = asgClient.describe_auto_scaling_groups()
-    for asg in response['AutoScalingGroups']:
+    for asg in asgData['AutoScalingGroups']:
         for tag in asg['Tags']:
             if tag['Key'] == 'Name':
                 if tag['Value'].split(' ')[0] == clusterName:
@@ -176,10 +175,14 @@ def future_reservation(activeContainerDescribed, clusterMemReservation):
     return futureMem
 
 
-def asg_scaleable(asgClient, clusterName):
-    asg = find_asg(clusterName,asgClient)
-    response = asgClient.describe_auto_scaling_groups(AutoScalingGroupNames=[asg])
-    return True if response['AutoScalingGroups'][0]['MinSize'] < response['AutoScalingGroups'][0]['DesiredCapacity'] else False
+def asg_scaleable(asgData, clusterName):
+    asg = find_asg(clusterName, asgData)
+    for group in asgData['AutoScalingGroups']:
+        if group['AutoScalingGroupName'] == asg:
+            return True if group['MinSize'] < group['DesiredCapacity'] else False
+    else:
+        print 'Cannot find AutoScalingGroup to verify scaleability'
+        return False
 
 
 def retrieve_cluster_data(ecsClient, cwClient, asgClient, cluster):
@@ -218,6 +221,7 @@ def main(run='normal'):
     ecsClient = boto3.client('ecs')
     cwClient = boto3.client('cloudwatch')
     asgClient = boto3.client('autoscaling')
+    asgData = asgClient.describe_auto_scaling_groups()
     clusterList = clusters(ecsClient)
 
     for cluster in clusterList:
@@ -231,22 +235,18 @@ def main(run='normal'):
             activeContainerDescribed = clusterData['activeContainerDescribed']
             drainingInstances = clusterData['drainingInstances']
             emptyInstances = clusterData['emptyInstances']
-
         ########## Cluster scaling rules ###########
         if (clusterMemReservation < FUTURE_MEM_TH and 
            future_reservation(activeContainerDescribed, clusterMemReservation) < FUTURE_MEM_TH): 
         # Future memory levels allow scale
-            
             if emptyInstances.keys():
             # There are empty instances                
                 for instanceId, containerInstId in emptyInstances.iteritems():
                     if run == 'dry':
                         print 'Would have drained {}'.format(instanceId)  
-                    elif asg_scaleable(asgClient, clusterName): 
+                    else:
                         print 'I am draining {}'.format(instanceId)
                         drain_instance(containerInstId, ecsClient, cluster)
-                    else:
-                        print 'Autoscaling Group not scaleable'
 
             if (clusterMemReservation < SCALE_IN_MEM_TH):
             # Cluster mem reservation level requires scale
@@ -254,11 +254,9 @@ def main(run='normal'):
                     instanceToScale = scale_in_instance(cluster, activeContainerDescribed)['containerInstanceArn']
                     if run == 'dry':
                         print 'Would have scaled {}'.format(instanceToScale)  
-                    elif asg_scaleable(asgClient, clusterName): 
+                    else:
                         print 'Going to scale {}'.format(instanceToScale)
                         drain_instance(instanceToScale, ecsClient, cluster)
-                    else:
-                        print 'Autoscaling Group not scaleable'
                 else:
                     print 'CPU higher than TH, cannot scale'
                 
@@ -296,4 +294,4 @@ def lambda_handler(event, context):
 
 if __name__ == '__main__':
     lambda_handler({}, '') 
-
+    
