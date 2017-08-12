@@ -176,6 +176,12 @@ def future_reservation(activeContainerDescribed, clusterMemReservation):
     return futureMem
 
 
+def asg_scaleable(asgClient, clusterName):
+    asg = find_asg(clusterName,asgClient)
+    response = asgClient.describe_auto_scaling_groups(AutoScalingGroupNames=[asg])
+    return True if response['AutoScalingGroups'][0]['MinSize'] < response['AutoScalingGroups'][0]['DesiredCapacity'] else False
+
+
 def retrieve_cluster_data(ecsClient, cwClient, asgClient, cluster):
     clusterName = cluster.split('/')[1]
     print '*** {} ***'.format(clusterName)
@@ -227,7 +233,8 @@ def main(run='normal'):
             emptyInstances = clusterData['emptyInstances']
 
         ########## Cluster scaling rules ###########
-        if (clusterMemReservation < FUTURE_MEM_TH) and (future_reservation(activeContainerDescribed, clusterMemReservation) < FUTURE_MEM_TH): 
+        if (clusterMemReservation < FUTURE_MEM_TH and 
+           future_reservation(activeContainerDescribed, clusterMemReservation) < FUTURE_MEM_TH): 
         # Future memory levels allow scale
             
             if emptyInstances.keys():
@@ -235,9 +242,11 @@ def main(run='normal'):
                 for instanceId, containerInstId in emptyInstances.iteritems():
                     if run == 'dry':
                         print 'Would have drained {}'.format(instanceId)  
-                    else: 
+                    elif asg_scaleable(asgClient, clusterName): 
                         print 'I am draining {}'.format(instanceId)
                         drain_instance(containerInstId, ecsClient, cluster)
+                    else:
+                        print 'Autoscaling Group not scaleable'
 
             if (clusterMemReservation < SCALE_IN_MEM_TH):
             # Cluster mem reservation level requires scale
@@ -245,11 +254,14 @@ def main(run='normal'):
                     instanceToScale = scale_in_instance(cluster, activeContainerDescribed)['containerInstanceArn']
                     if run == 'dry':
                         print 'Would have scaled {}'.format(instanceToScale)  
-                    else: 
+                    elif asg_scaleable(asgClient, clusterName): 
                         print 'Going to scale {}'.format(instanceToScale)
                         drain_instance(instanceToScale, ecsClient, cluster)
+                    else:
+                        print 'Autoscaling Group not scaleable'
                 else:
                     print 'CPU higher than TH, cannot scale'
+                
 
         if drainingInstances.keys():
         # There are draining instsnces to terminate
@@ -283,4 +295,5 @@ def lambda_handler(event, context):
 
 
 if __name__ == '__main__':
-   lambda_handler({}, '') 
+    lambda_handler({}, '') 
+
