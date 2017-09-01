@@ -24,7 +24,7 @@ Once the draining process is complete, the instance will be terminated.
 #### Creating a Lambda function step by step:
 
 ### Flow logic
-* Iterate over existing ECS cluster using AWS keys
+* Iterate over existing ECS clusters
 * Check a cluster's ability to scale-in based on predicted future memory reservation capacity
 * Look for empty hosts the can be scaled
 * Look for least utilized host
