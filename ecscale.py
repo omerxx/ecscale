@@ -277,21 +277,4 @@ def main(run='normal'):
 
 def lambda_handler(event, context):
     main()
-
-
-if __name__ == '__main__':
-    parser = OptionParser()
-    parser.add_option("-a", "--access-key", dest="AWS_ACCESS_KEY_ID", help="Provide AWS access key")
-    parser.add_option("-s", "--secret-key", dest="AWS_SECRET_ACCESS_KEY", help="Provide AWS secret key")
-    parser.add_option("-d", "--dry-run", action="store_true", dest="DRY_RUN", default=False, help="Dry run the process")
-    (options, args) = parser.parse_args()
-
-    if options.AWS_ACCESS_KEY_ID and options.AWS_SECRET_ACCESS_KEY:
-        os.environ['AWS_ACCESS_KEY_ID'] = options.AWS_ACCESS_KEY_ID
-        os.environ['AWS_SECRET_ACCESS_KEY'] = options.AWS_SECRET_ACCESS_KEY
-    elif options.AWS_ACCESS_KEY_ID or options.AWS_SECRET_ACCESS_KEY:
-        print 'AWS key or secret are missing'
-
-    runType = 'dry' if options.DRY_RUN else 'normal'
-    main(run=runType)
     
