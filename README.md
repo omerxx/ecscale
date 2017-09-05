@@ -1,5 +1,5 @@
 # EC*SCALE*
-## A servresless app removing underutilized hosts from ECS clusters
+## A serverless app removing underutilized hosts from ECS clusters
 
 ### Scaling ECS down is not a straightforward task;Based on one metric solely, an instance could be taken down causing 2 effects:
  1. Forcefully removing a host when a container is running will cut off active connections causing service downtime
