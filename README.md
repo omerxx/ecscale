@@ -16,6 +16,12 @@ Once the draining process is complete, the instance will be terminated.
 2. Set repeated run (recommended every 60 minutes using a cloudwatch events trigger for Lambda)
 3. That's it... Your ECS hosts are being gracefully removed if needed. No metrics/alarms needed
 
+### Changable Parameters:
+* SCALE_IN_CPU_TH = 30 `# Below this EC2 average metric scaling would take action`
+* SCALE_IN_MEM_TH = 60 `# Below this cluster average metric scaling would take action`
+* FUTURE_MEM_TH = 70 `# Below this future metric scaling would take action`
+* ECS_AVOID_STR = 'awseb' `# Use this to avoid clusters containing a specific string (i.e ElasticBeanstalk clusters)`
+
 #### How to create a role to run ecscale:
 1. When creating the Lambda function, you'll be asked to select a role or create a new one, choose a new role
 2. Provide the json from `policy.json` to the role policy
@@ -24,7 +30,7 @@ Once the draining process is complete, the instance will be terminated.
 #### Creating a Lambda function step by step:
 
 ### Flow logic
-* Iterate over existing ECS cluster using AWS keys
+* Iterate over existing ECS clusters
 * Check a cluster's ability to scale-in based on predicted future memory reservation capacity
 * Look for empty hosts the can be scaled
 * Look for least utilized host
