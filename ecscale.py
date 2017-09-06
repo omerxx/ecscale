@@ -1,4 +1,3 @@
-#!/bin/python
 import boto3
 import datetime
 from optparse import OptionParser
@@ -8,14 +7,14 @@ SCALE_IN_CPU_TH = 30
 SCALE_IN_MEM_TH = 60
 FUTURE_MEM_TH = 70
 ECS_AVOID_STR = 'awseb'
-
+logline = {}
 
 def clusters(ecsClient):
     # Returns an iterable list of cluster names
     response = ecsClient.list_clusters()
     if not response['clusterArns']:
         print 'No ECS cluster found'
-        exit
+        return 
 
     return [cluster for cluster in response['clusterArns'] if ECS_AVOID_STR not in cluster]
 
@@ -40,7 +39,7 @@ def cluster_memory_reservation(cwClient, clusterName):
         return response['Datapoints'][0]['Average']
 
     except Exception:
-        print 'Could not retrieve mem reservation for {}'.format(clusterName)
+        logger({'ClusterMemoryError': 'Could not retrieve mem reservation for {}'.format(clusterName)})
 
 
 def find_asg(clusterName, asgData):
@@ -52,11 +51,11 @@ def find_asg(clusterName, asgData):
                     return tag['ResourceId']
 
     else:
-        print 'auto scaling group for {} not found. exiting'.format(clusterName)
+        logger({'ASGError': 'Auto scaling group for {} not found'.format(clusterName)})
 
 
-def ec2_avg_cpu_utilization(clusterName, asgclient, cwclient):
-    asg = find_asg(clusterName, asgclient)
+def ec2_avg_cpu_utilization(clusterName, asgData, cwclient):
+    asg = find_asg(clusterName, asgData)
     response = cwclient.get_metric_statistics( 
         Namespace='AWS/EC2',
         MetricName='CPUUtilization',
@@ -72,6 +71,16 @@ def ec2_avg_cpu_utilization(clusterName, asgclient, cwclient):
         Statistics=['Average']
     )
     return response['Datapoints'][0]['Average']
+
+
+def asg_on_min_state(clusterName, asgData, asgClient):
+    asg = find_asg(clusterName, asgData)
+    for sg in asgData['AutoScalingGroups']:
+        if sg['AutoScalingGroupName'] == asg:
+            if sg['MinSize'] == sg['DesiredCapacity']:
+                return True
+    
+    return False 
 
 
 def empty_instances(clusterArn, activeContainerDescribed):
@@ -105,10 +114,10 @@ def terminate_decrease(instanceId, asgClient):
             InstanceId=instanceId,
             ShouldDecrementDesiredCapacity=True
         )
-        print response['Activity']['Cause']
+        logger({'Action': 'Terminate', 'Message': response['Activity']['Cause']})
 
     except Exception as e:
-        print 'Termination failed: {}'.format(e)
+        logger({'Error': e})
 
 
 def scale_in_instance(clusterArn, activeContainerDescribed):
@@ -134,7 +143,7 @@ def scale_in_instance(clusterArn, activeContainerDescribed):
                         instanceToScale['containerInstanceArn'] = inst['containerInstanceArn']
                 break
 
-    print 'Scale candidate: {} with free {}'.format(instanceToScale['id'], instanceToScale['freemem'])
+    logger({'Scale candidate': '{} with free {}'.format(instanceToScale['id'], instanceToScale['freemem'])})
     return instanceToScale
 
     
@@ -144,9 +153,6 @@ def running_tasks(instanceId, containerDescribed):
         if inst['ec2InstanceId'] == instanceId:
             return int(inst['runningTasksCount']) + int(inst['pendingTasksCount']) 
     
-    else:
-        print 'Instance not found'
-
 
 def drain_instance(containerInstanceId, ecsClient, clusterArn):
     # put a given ec2 into draining state
@@ -158,7 +164,7 @@ def drain_instance(containerInstanceId, ecsClient, clusterArn):
         )
 
     except Exception as e:
-        print 'Draining failed: {}'.format(e) 
+        logger({'DrainingError': e})
 
 
 def future_reservation(activeContainerDescribed, clusterMemReservation):
@@ -217,6 +223,15 @@ def retrieve_cluster_data(ecsClient, cwClient, asgClient, cluster):
     return dataObj
 
 
+def logger(entry, action='log'):
+# print log as one-line json from cloudwatch integration
+    if action == 'log':
+        global logline
+        logline.update(entry)
+    elif action == 'print':
+        print logline 
+     
+
 def main(run='normal'):
     ecsClient = boto3.client('ecs')
     cwClient = boto3.client('cloudwatch')
@@ -236,6 +251,11 @@ def main(run='normal'):
             drainingInstances = clusterData['drainingInstances']
             emptyInstances = clusterData['emptyInstances']
         ########## Cluster scaling rules ###########
+        
+        if asg_on_min_state(clusterName, asgData, asgClient):
+            print '{}: in Minimum state, skipping'.format(clusterName) 
+            continue
+
         if (clusterMemReservation < FUTURE_MEM_TH and 
            future_reservation(activeContainerDescribed, clusterMemReservation) < FUTURE_MEM_TH): 
         # Future memory levels allow scale
@@ -245,17 +265,17 @@ def main(run='normal'):
                     if run == 'dry':
                         print 'Would have drained {}'.format(instanceId)  
                     else:
-                        print 'I am draining {}'.format(instanceId)
+                        print 'Draining empty instance {}'.format(instanceId)
                         drain_instance(containerInstId, ecsClient, cluster)
 
             if (clusterMemReservation < SCALE_IN_MEM_TH):
             # Cluster mem reservation level requires scale
-                if (ec2_avg_cpu_utilization(clusterName, asgClient, cwClient) < SCALE_IN_CPU_TH):
+                if (ec2_avg_cpu_utilization(clusterName, asgData, cwClient) < SCALE_IN_CPU_TH):
                     instanceToScale = scale_in_instance(cluster, activeContainerDescribed)['containerInstanceArn']
                     if run == 'dry':
                         print 'Would have scaled {}'.format(instanceToScale)  
                     else:
-                        print 'Going to scale {}'.format(instanceToScale)
+                        print 'Draining least utilized instanced {}'.format(instanceToScale)
                         drain_instance(instanceToScale, ecsClient, cluster)
                 else:
                     print 'CPU higher than TH, cannot scale'
@@ -293,5 +313,6 @@ def lambda_handler(event, context):
 
 
 if __name__ == '__main__':
-    lambda_handler({}, '') 
+    # lambda_handler({}, '') 
+    main()
     
