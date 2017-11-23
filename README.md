@@ -1,6 +1,5 @@
 # EC*SCALE*
 ### A serverless app removing underutilized hosts from ECS clusters
-[Read about it on Medium](https://medium.com/@omerxx/how-to-scale-in-ecs-hosts-2d0906d2ba)
 
 #### Scaling ECS down is not a straightforward task;Based on one metric solely, an instance could be taken down causing 2 effects:
  1. Forcefully removing a host when a container is running will cut off active connections causing service downtime
@@ -37,3 +36,5 @@ Once the draining process is complete, the instance will be terminated.
 * Look for least utilized host
 * Choose a candidate and put in draining state
 * Terminate a draining host that has no running tasks and decrease the desired number of instances
+
+[Read about it some more on Medium](https://medium.com/@omerxx/how-to-scale-in-ecs-hosts-2d0906d2ba)
