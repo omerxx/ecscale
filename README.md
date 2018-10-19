@@ -19,6 +19,7 @@ Once the draining process is complete, the instance will be terminated.
 #### Changable Parameters:
 * SCALE_IN_CPU_TH = 30 `# Below this EC2 average metric scaling would take action`
 * SCALE_IN_MEM_TH = 60 `# Below this cluster average metric scaling would take action`
+* FUTURE_CPU_TH = 40 `# Below this future metric scaling would take action`
 * FUTURE_MEM_TH = 70 `# Below this future metric scaling would take action`
 * ECS_AVOID_STR = 'awseb' `# Use this to avoid clusters containing a specific string (i.e ElasticBeanstalk clusters)`
 
@@ -31,7 +32,7 @@ Once the draining process is complete, the instance will be terminated.
 
 #### Flow logic
 * Iterate over existing ECS clusters
-* Check a cluster's ability to scale-in based on predicted future memory reservation capacity
+* Check a cluster's ability to scale-in based on predicted future cpu and memory reservation capacity
 * Look for empty hosts the can be scaled
 * Look for least utilized host
 * Choose a candidate and put in draining state
