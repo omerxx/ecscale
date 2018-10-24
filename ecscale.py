@@ -73,11 +73,11 @@ def ec2_avg_cpu_utilization(clusterName, asgData, cwclient):
     return response['Datapoints'][0]['Average']
 
 
-def asg_on_min_state(clusterName, asgData, asgClient):
+def asg_on_min_state(clusterName, asgData, asgClient, activeInstanceCount):
     asg = find_asg(clusterName, asgData)
     for sg in asgData['AutoScalingGroups']:
         if sg['AutoScalingGroupName'] == asg:
-            if sg['MinSize'] == sg['DesiredCapacity']:
+            if activeInstanceCount <= sg['MinSize']:
                 return True
     
     return False 
@@ -167,12 +167,11 @@ def drain_instance(containerInstanceId, ecsClient, clusterArn):
         logger({'DrainingError': e})
 
 
-def future_reservation(activeContainerDescribed, clusterMemReservation):
+def future_reservation(activeInstanceCount, clusterMemReservation):
     # If the cluster were to scale in an instance, calculate the effect on mem reservation
-    # return cluster_mem_reserve*num_of_ec2 / num_of_ec2-1
-    numOfEc2 = len(activeContainerDescribed['containerInstances'])
-    if numOfEc2 > 1:
-        futureMem = (clusterMemReservation*numOfEc2) / (numOfEc2-1)
+    # return cluster_mem_reserve*active_instance_count / active_instance_count-1
+    if activeInstanceCount > 1:
+        futureValue = (clusterMemReservation*activeInstanceCount) / (activeInstanceCount-1)
     else:
         return 100
 
@@ -248,16 +247,29 @@ def main(run='normal'):
             clusterName = clusterData['clusterName']
             clusterMemReservation = clusterData['clusterMemReservation']
             activeContainerDescribed = clusterData['activeContainerDescribed']
+            activeInstanceCount = len(activeContainerDescribed['containerInstances'])
             drainingInstances = clusterData['drainingInstances']
             emptyInstances = clusterData['emptyInstances']
         ########## Cluster scaling rules ###########
         
-        if asg_on_min_state(clusterName, asgData, asgClient):
+        if drainingInstances.keys():
+        # There are draining instances to terminate
+            for instanceId, containerInstId in drainingInstances.iteritems():
+                if not running_tasks(instanceId, clusterData['drainingContainerDescribed']):
+                    if run == 'dry':
+                        print 'Would have terminated {}'.format(instanceId)
+                    else:
+                        print 'Terminating draining instance with no containers {}'.format(instanceId)
+                        terminate_decrease(instanceId, asgClient)
+                else:
+                    print 'Draining instance not empty'
+
+        if asg_on_min_state(clusterName, asgData, asgClient, activeInstanceCount):
             print '{}: in Minimum state, skipping'.format(clusterName) 
             continue
 
         if (clusterMemReservation < FUTURE_MEM_TH and 
-           future_reservation(activeContainerDescribed, clusterMemReservation) < FUTURE_MEM_TH): 
+           future_reservation(activeInstanceCount, clusterMemReservation) < FUTURE_MEM_TH):
         # Future memory levels allow scale
             if emptyInstances.keys():
             # There are empty instances                
@@ -279,19 +291,6 @@ def main(run='normal'):
                         drain_instance(instanceToScale, ecsClient, cluster)
                 else:
                     print 'CPU higher than TH, cannot scale'
-                
-
-        if drainingInstances.keys():
-        # There are draining instsnces to terminate
-            for instanceId, containerInstId in drainingInstances.iteritems():
-                if not running_tasks(instanceId, clusterData['drainingContainerDescribed']):
-                    if run == 'dry':
-                        print 'Would have terminated {}'.format(instanceId)
-                    else:
-                        print 'Terminating draining instance with no containers {}'.format(instanceId)
-                        terminate_decrease(instanceId, asgClient)
-                else:
-                    print 'Draining instance not empty'
 
         print '***'
 
