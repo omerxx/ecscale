@@ -181,16 +181,6 @@ def future_reservation(activeContainerDescribed, clusterMemReservation):
     return futureMem
 
 
-def asg_scaleable(asgData, clusterName):
-    asg = find_asg(clusterName, asgData)
-    for group in asgData['AutoScalingGroups']:
-        if group['AutoScalingGroupName'] == asg:
-            return True if group['MinSize'] < group['DesiredCapacity'] else False
-    else:
-        print 'Cannot find AutoScalingGroup to verify scaleability'
-        return False
-
-
 def retrieve_cluster_data(ecsClient, cwClient, asgClient, cluster):
     clusterName = cluster.split('/')[1]
     print '*** {} ***'.format(clusterName)
