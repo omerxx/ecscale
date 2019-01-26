@@ -6,6 +6,8 @@ import os
 SCALE_IN_CPU_TH = 30
 SCALE_IN_MEM_TH = 60
 FUTURE_MEM_TH = 70
+ASG_PREFIX = ''
+ASG_SUFFIX = ''
 ECS_AVOID_STR = 'awseb'
 logline = {}
 
@@ -47,7 +49,7 @@ def find_asg(clusterName, asgData):
     for asg in asgData['AutoScalingGroups']:
         for tag in asg['Tags']:
             if tag['Key'] == 'Name':
-                if tag['Value'].split(' ')[0] == clusterName:
+                if tag['Value'].split(' ')[0] == '{}{}{}'.format(ASG_PREFIX, clusterName, ASG_SUFFIX):
                     return tag['ResourceId']
 
     else:
