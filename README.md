@@ -20,6 +20,7 @@ Once the draining process is complete, the instance will be terminated.
 * SCALE_IN_CPU_TH = 30 `# Below this EC2 average metric scaling would take action`
 * SCALE_IN_MEM_TH = 60 `# Below this cluster average metric scaling would take action`
 * FUTURE_MEM_TH = 70 `# Below this future metric scaling would take action`
+* DRAIN_ALL_EMPTY_INSTANCES = True `# Set to False to prevent scaling in more than one instance at a time`
 * ASG_PREFIX = '' `# Use this when your ASG naming convention requires a prefix (e.g. 'ecs-')`
 * ASG_SUFFIX = '' `# Use this when your ASG naming convention requires a suffix (e.g. '-live')`
 * ECS_AVOID_STR = 'awseb' `# Use this to avoid clusters containing a specific string (i.e ElasticBeanstalk clusters)`

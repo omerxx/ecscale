@@ -6,6 +6,7 @@ import os
 SCALE_IN_CPU_TH = 30
 SCALE_IN_MEM_TH = 60
 FUTURE_MEM_TH = 70
+DRAIN_ALL_EMPTY_INSTANCES = True
 ASG_PREFIX = ''
 ASG_SUFFIX = ''
 ECS_AVOID_STR = 'awseb'
@@ -263,7 +264,7 @@ def main(run='normal'):
         if (clusterMemReservation < FUTURE_MEM_TH and 
            future_reservation(activeInstanceCount, clusterMemReservation) < FUTURE_MEM_TH):
         # Future memory levels allow scale
-            if emptyInstances.keys():
+            if DRAIN_ALL_EMPTY_INSTANCES and emptyInstances.keys():
             # There are empty instances                
                 for instanceId, containerInstId in emptyInstances.iteritems():
                     if run == 'dry':
