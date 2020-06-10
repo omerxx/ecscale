@@ -174,7 +174,7 @@ def future_reservation(activeInstanceCount, clusterMemReservation):
     # If the cluster were to scale in an instance, calculate the effect on mem reservation
     # return cluster_mem_reserve*active_instance_count / active_instance_count-1
     if activeInstanceCount > 1:
-        futureValue = (clusterMemReservation*activeInstanceCount) / (activeInstanceCount-1)
+        futureMem = (clusterMemReservation*activeInstanceCount) / (activeInstanceCount-1)
     else:
         return 100
 
